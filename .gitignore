@@ -2,6 +2,13 @@ __pycache__/
 *.py[cod]
 *.pyo
 venv/
-.env
+
+.ipynb_checkpoints/
+
+data/raw/
+data/features/
+
 .DS_Store
 Thumbs.db
+
+.env

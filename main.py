@@ -5,7 +5,8 @@ import pandas as pd
 import numpy as np
 import joblib
 import os
-
+import startup
+startup.build()
 app = FastAPI(title="BioSecurity Risk API", version="1.0")
 
 clf_model  = joblib.load("models/risk_classifier.pkl")
