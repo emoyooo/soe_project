@@ -5,9 +5,7 @@ startup.py — запускается перед main.py на Railway.
 """
 
 import pandas as pd
-import numpy as np
 import os
-import requests
 from datetime import datetime, timedelta
 
 os.makedirs("data/raw",       exist_ok=True)
