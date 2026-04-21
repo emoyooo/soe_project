@@ -152,3 +152,50 @@ def health():
         "countries": int(combined['country'].nunique()),
         "diseases": combined['disease'].unique().tolist(),
     }
+
+@app.get("/trends/{country}")
+def country_trends(country: str, months: int = 6):
+    cutoff = combined['date'].max() - pd.DateOffset(months=months)
+    
+    subset = combined[
+        (combined['country'] == country) &
+        (combined['date'] >= cutoff)
+    ].copy()
+    
+    if len(subset) == 0:
+        raise HTTPException(status_code=404, detail=f"No data for {country}")
+    
+    # Группируем по дате — суммируем все болезни
+    trends = subset.groupby('date').agg(
+        total_cases        = ('new_cases', 'sum'),
+        cases_per_100k     = ('new_cases_per_100k', 'sum'),
+        cases_ma_30d       = ('cases_ma_30d', 'sum'),
+    ).reset_index()
+    
+    trends = trends.sort_values('date')
+    
+    
+    recent = trends.tail(14)['cases_per_100k'].mean()
+    previous = trends.iloc[-28:-14]['cases_per_100k'].mean()
+    
+    if previous > 0:
+        change_pct = (recent - previous) / previous * 100
+        trend_direction = "Decreasing" if change_pct < -5 else ("Increasing" if change_pct > 5 else "Stable")
+    else:
+        trend_direction = "Stable"
+        change_pct = 0.0
+
+    return {
+        "country": country,
+        "months":  months,
+        "trend_direction": trend_direction,
+        "change_pct": round(change_pct, 1),
+        "data": [
+            {
+                "date":          str(row['date'].date()),
+                "cases_per_100k": round(float(row['cases_per_100k']), 2),
+                "cases_ma_30d":   round(float(row['cases_ma_30d']), 2),
+            }
+            for _, row in trends.iterrows()
+        ]
+    }
