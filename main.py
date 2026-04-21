@@ -116,6 +116,90 @@ def compute_risk_score(country, date_str):
 
 
 # ── Эндпоинты ─────────────────────────────────────────────────────────────
+
+class UserRequest(BaseModel):
+    country: str
+    date: str
+    # симптомы со слайдеров — значения 0-10
+    fever: float = 0
+    cough: float = 0
+    fatigue: float = 0
+    breathing_issues: float = 0
+    headache: float = 0
+    body_aches: float = 0
+
+@app.post("/risk/user")
+def user_risk(req: UserRequest):
+    # Региональный риск
+    regional = compute_risk_score(req.country, req.date)
+    regional_score = regional["risk_score"]
+
+    # Персональный риск — веса симптомов
+    WEIGHTS = {
+        "fever":            3.0,  # температура — сильный сигнал
+        "breathing_issues": 4.0,  # самый опасный симптом
+        "cough":            2.0,
+        "body_aches":       2.0,
+        "headache":         1.5,
+        "fatigue":          1.0,
+    }
+
+    symptom_values = {
+        "fever":            req.fever,
+        "cough":            req.cough,
+        "fatigue":          req.fatigue,
+        "breathing_issues": req.breathing_issues,
+        "headache":         req.headache,
+        "body_aches":       req.body_aches,
+    }
+
+    # взвешенная сумма / максимально возможная сумма → 0-100
+    raw = sum(symptom_values[s] * WEIGHTS[s] for s in symptom_values)
+    max_possible = sum(10 * w for w in WEIGHTS.values())
+    personal_score = (raw / max_possible) * 100
+
+    # Итог
+    # Если эпидемия сильная — региональный риск поднимает минимальный порог
+    if regional_score >= 67:
+    # HIGH регион — минимум 40 баллов даже без симптомов
+        total = max(40, 0.6 * personal_score + 0.4 * regional_score)
+    elif regional_score >= 34:
+    # MEDIUM регион — минимум 20 баллов
+        total = max(20, 0.6 * personal_score + 0.4 * regional_score)
+    else:
+        total = 0.6 * personal_score + 0.4 * regional_score
+
+    total = round(min(100, total), 1)       
+    level = "HIGH" if total >= 67 else ("MEDIUM" if total >= 34 else "LOW")
+
+    # Рекомендации
+    recommendations = []
+    if req.breathing_issues >= 7:
+        recommendations.append("Немедленно обратитесь к врачу")
+    elif req.fever >= 5 or req.breathing_issues >= 4:
+        recommendations.append("Обратитесь к врачу в течение 24 часов")
+    if level == "HIGH":
+        recommendations.append("Самоизолируйтесь")
+        recommendations.append("Сдайте тест на инфекционные заболевания")
+    elif level == "MEDIUM":
+        recommendations.append("Избегайте мест скопления людей")
+        recommendations.append("Носите маску в закрытых помещениях")
+    if not recommendations:
+        recommendations.append("Продолжайте соблюдать стандартные меры гигиены")
+
+    return {
+        "user_risk_score":  total,
+        "risk_level":       level,
+        "regional_risk":    round(regional_score, 1),
+        "personal_score":   round(personal_score, 1),
+        "dominant_disease": regional["dominant_disease"],
+        "recommendations":  recommendations,
+        "breakdown": {
+            "personal":  round(0.6 * personal_score, 1),
+            "regional":  round(0.4 * regional_score, 1),
+        }
+    }
+
 class CountryRequest(BaseModel):
     country: str
     date: str  # "2024-01-15"
